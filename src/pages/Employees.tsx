@@ -248,21 +248,22 @@ const Employees: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="bg-white rounded-lg shadow-sm p-6">
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Employee Management</h1>
-            <p className="text-gray-600 mt-1">Manage employee information and records</p>
-          </div>
-          <button
-            onClick={() => setShowForm(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            <Plus className="w-5 h-5" />
-            Add Employee
-          </button>
-        </div>
-      </div>
+<div className="bg-white rounded-lg shadow-sm p-6 sticky top-0 z-10">
+  <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+    <div>
+      <h1 className="text-2xl font-bold text-gray-900">Employee Management</h1>
+      <p className="text-gray-600 mt-1">Manage employee information and records</p>
+    </div>
+    <button
+      onClick={() => setShowForm(true)}
+      className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+    >
+      <Plus className="w-5 h-5" />
+      Add Employee
+    </button>
+  </div>
+</div>
+
 
       {/* Filters */}
       <div className="bg-white rounded-lg shadow-sm p-6">
