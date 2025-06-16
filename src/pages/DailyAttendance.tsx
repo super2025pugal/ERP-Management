@@ -1,13 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Search, Filter, Users, Clock, Download, RefreshCw, Calculator } from 'lucide-react';
+import { Calendar, Search, Filter, Users, Clock, Download, RefreshCw, Calculator, X } from 'lucide-react';
 import { getAttendanceByDate, getDocuments } from '../services/firestore';
 import { formatDate, formatTime, calculateAttendanceDuration } from '../utils/calculations';
 import type { Attendance, Employee, Shift, Company, Unit, Group } from '../types';
 
 const DailyAttendance: React.FC = () => {
-  const [selectedDate, setSelectedDate] = useState<string>(
+  const [selectedFromDate, setSelectedFromDate] = useState<string>(
     new Date().toISOString().split('T')[0]
   );
+  const [selectedToDate, setSelectedToDate] = useState<string>(
+    new Date().toISOString().split('T')[0]
+  );
+  const [showDateRangeModal, setShowDateRangeModal] = useState(false);
   const [attendance, setAttendance] = useState<Attendance[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
@@ -30,10 +34,19 @@ const DailyAttendance: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (selectedDate) {
-      loadDailyAttendance();
+    if (selectedFromDate && selectedToDate) {
+      loadAttendanceRange();
     }
-  }, [selectedDate]);
+  }, [selectedFromDate, selectedToDate]);
+
+  const handleUpToTodayClick = () => {
+    const today = new Date().toISOString().split('T')[0];
+    const firstDayOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
+    
+    setSelectedFromDate(firstDayOfMonth);
+    setSelectedToDate(today);
+    setShowDateRangeModal(true);
+  };
 
   const loadMasterData = async () => {
     try {
@@ -55,11 +68,19 @@ const DailyAttendance: React.FC = () => {
     }
   };
 
-  const loadDailyAttendance = async () => {
+  const loadAttendanceRange = async () => {
     setIsLoading(true);
     try {
-      const date = new Date(selectedDate);
-      const attendanceData = await getAttendanceByDate(date);
+      const attendanceData = [];
+      const fromDate = new Date(selectedFromDate);
+      const toDate = new Date(selectedToDate);
+      
+      // Load attendance for each day in the range
+      for (let d = new Date(fromDate); d <= toDate; d.setDate(d.getDate() + 1)) {
+        const dailyAttendance = await getAttendanceByDate(new Date(d));
+        attendanceData.push(...dailyAttendance);
+      }
+      
       setAttendance(attendanceData);
     } catch (error) {
       console.error('Error loading attendance:', error);
@@ -134,70 +155,102 @@ const DailyAttendance: React.FC = () => {
            matchesCompany && matchesUnit && matchesGroup && matchesShift;
   });
 
-  const exportToCSV = () => {
-    const headers = [
-      'Employee ID',
-      'Employee Name',
-      'Employee Type',
-      'Company',
-      'Unit',
-      'Group',
-      'Shift',
-      'FN Status',
-      'AN Status',
-      'Overall Status',
-      'Start Time',
-      'End Time',
-      'Working Duration',
-      'OT Duration',
-      'OT Hours',
-      'Permission Hours'
-    ];
-
-    const csvData = filteredAttendance.map(att => {
-      const employee = getEmployeeById(att.employeeId);
-      const company = getCompanyById(employee?.companyId || '');
-      const unit = getUnitById(employee?.unitId || '');
-      const group = getGroupById(employee?.groupId || '');
-      const shift = getShiftById(att.shiftId);
-      
-      // Calculate duration if times are available
-      const duration = att.actualStartTime && att.actualEndTime 
-        ? calculateAttendanceDuration(att.actualStartTime, att.actualEndTime)
-        : null;
-      
-      return [
-        employee?.employeeId || '',
-        employee?.name || '',
-        employee?.employeeType || '',
-        company?.name || '',
-        unit?.name || '',
-        group?.name || '',
-        shift?.name || '',
-        att.fnStatus,
-        att.anStatus,
-        getAttendanceStatus(att.fnStatus, att.anStatus),
-        att.actualStartTime || '',
-        att.actualEndTime || '',
-        duration?.workingDuration || '',
-        duration?.otDuration || '',
-        att.otHours || duration?.otHours || 0,
-        att.permissionHours || 0
-      ];
+const exportToCSV = () => {
+  // Group attendance by employee
+  const employeeAttendanceMap = new Map();
+  
+  filteredAttendance.forEach(att => {
+    const employee = getEmployeeById(att.employeeId);
+    if (!employee) return;
+    
+    const attendanceDate = att.date instanceof Date ? att.date : new Date(att.date);
+    const dateStr = attendanceDate.toISOString().split('T')[0];
+    
+    if (!employeeAttendanceMap.has(employee.id)) {
+      employeeAttendanceMap.set(employee.id, {
+        employee,
+        attendanceByDate: new Map()
+      });
+    }
+    
+    employeeAttendanceMap.get(employee.id).attendanceByDate.set(dateStr, att);
+  });
+  
+  // Get all unique dates and sort them
+  const allDates = new Set();
+  employeeAttendanceMap.forEach(data => {
+    data.attendanceByDate.forEach((_, date) => {
+      allDates.add(date);
     });
+  });
+  const sortedDates = Array.from(allDates).sort();
+  
+  // Create headers
+  const headers = ['Name', 'Roll No'];
+  const subHeaders = ['', ''];
+  
+  // Add date columns
+  sortedDates.forEach(date => {
+    const formattedDate = formatDate(new Date(date));
+    headers.push(formattedDate, '', '', '');
+    subHeaders.push('FN Status', 'AN Status', 'Overall Status', 'OT Hours');
+  });
+  
+  // Sort employees by name
+  const sortedEmployees = Array.from(employeeAttendanceMap.values()).sort((a, b) => 
+    a.employee.name.localeCompare(b.employee.name)
+  );
+  
+  const csvData = sortedEmployees.map(data => {
+    const { employee, attendanceByDate } = data;
+    const row = [employee.name, employee.employeeId];
+    
+    // Add data for each date
+    sortedDates.forEach(date => {
+      const attendance = attendanceByDate.get(date);
+      
+      if (attendance) {
+        const status = getAttendanceStatus(attendance.fnStatus, attendance.anStatus);
+        
+        // Calculate OT hours
+        let otHours = attendance.otHours || 0;
+        if (!otHours && attendance.actualStartTime && attendance.actualEndTime) {
+          const duration = calculateAttendanceDuration(attendance.actualStartTime, attendance.actualEndTime);
+          otHours = duration.otHours;
+        }
+        
+        row.push(
+          attendance.fnStatus.toUpperCase(),
+          attendance.anStatus.toUpperCase(),
+          status,
+          otHours.toFixed(1)
+        );
+      } else {
+        // No attendance record for this date
+        row.push('ABSENT', 'ABSENT', 'Absent', '0.0');
+      }
+    });
+    
+    return row;
+  });
 
-    const csvContent = [headers, ...csvData]
-      .map(row => row.map(cell => `"${cell}"`).join(','))
-      .join('\n');
+  // Create CSV content
+  const csvContent = [
+    headers,
+    subHeaders,
+    ...csvData
+  ]
+    .map(row => row.map(cell => `"${cell}"`).join(','))
+    .join('\n');
 
-    const blob = new Blob([csvContent], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `daily-attendance-${selectedDate}.csv`;
-    a.click();
-    window.URL.revokeObjectURL(url);
-  };
+  const blob = new Blob([csvContent], { type: 'text/csv' });
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `attendance-report-${selectedFromDate}-to-${selectedToDate}.csv`;
+  a.click();
+  window.URL.revokeObjectURL(url);
+};
 
   const stats = {
     total: filteredAttendance.length,
@@ -225,27 +278,88 @@ const DailyAttendance: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {/* Date Range Modal */}
+      {showDateRangeModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Select Date Range</h3>
+              <button
+                onClick={() => setShowDateRangeModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  From Date
+                </label>
+                <input
+                  type="date"
+                  value={selectedFromDate}
+                  onChange={(e) => setSelectedFromDate(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  To Date
+                </label>
+                <input
+                  type="date"
+                  value={selectedToDate}
+                  onChange={(e) => setSelectedToDate(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+            </div>
+            
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setShowDateRangeModal(false)}
+                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  setShowDateRangeModal(false);
+                  loadAttendanceRange();
+                }}
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                Apply
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="bg-white rounded-lg shadow-sm p-6">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Daily Attendance</h1>
-            <p className="text-gray-600 mt-1">View and filter daily attendance records with duration tracking</p>
+            <h1 className="text-2xl font-bold text-gray-900">Attendance Report</h1>
+            <p className="text-gray-600 mt-1">
+              View and export attendance records from {formatDate(new Date(selectedFromDate))} to {formatDate(new Date(selectedToDate))}
+            </p>
           </div>
           
           <div className="flex flex-col sm:flex-row gap-3">
-            <div className="flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-gray-500" />
-              <input
-                type="date"
-                value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
-                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
+            <button
+              onClick={handleUpToTodayClick}
+              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+            >
+              <Calendar className="w-4 h-4" />
+              Up to Today
+            </button>
             
             <button
-              onClick={loadDailyAttendance}
+              onClick={loadAttendanceRange}
               disabled={isLoading}
               className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
             >
@@ -260,6 +374,31 @@ const DailyAttendance: React.FC = () => {
               <Download className="w-4 h-4" />
               Export CSV
             </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Date Range Display */}
+      <div className="bg-white rounded-lg shadow-sm p-4">
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex items-center gap-2">
+            <Calendar className="w-5 h-5 text-gray-500" />
+            <span className="text-sm font-medium text-gray-700">Date Range:</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="date"
+              value={selectedFromDate}
+              onChange={(e) => setSelectedFromDate(e.target.value)}
+              className="px-3 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+            <span className="text-gray-500">to</span>
+            <input
+              type="date"
+              value={selectedToDate}
+              onChange={(e) => setSelectedToDate(e.target.value)}
+              className="px-3 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
           </div>
         </div>
       </div>
@@ -416,6 +555,23 @@ const DailyAttendance: React.FC = () => {
             </select>
           </div>
           
+          {/* Group Filter */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Group</label>
+            <select
+              value={groupFilter}
+              onChange={(e) => setGroupFilter(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              <option value="">All Groups</option>
+              {groups
+                .filter(group => !unitFilter || group.unitId === unitFilter)
+                .map(group => (
+                  <option key={group.id} value={group.id}>{group.name}</option>
+                ))}
+            </select>
+          </div>
+          
           {/* Shift Filter */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Shift</label>
@@ -437,7 +593,7 @@ const DailyAttendance: React.FC = () => {
       <div className="bg-white rounded-lg shadow-sm overflow-hidden">
         <div className="p-6 border-b border-gray-200">
           <h3 className="text-lg font-semibold text-gray-900">
-            Attendance for {formatDate(new Date(selectedDate))}
+            Attendance Records ({formatDate(new Date(selectedFromDate))} - {formatDate(new Date(selectedToDate))})
           </h3>
           <p className="text-sm text-gray-600 mt-1">
             Showing {filteredAttendance.length} of {attendance.length} records
@@ -452,7 +608,7 @@ const DailyAttendance: React.FC = () => {
         ) : filteredAttendance.length === 0 ? (
           <div className="p-8 text-center text-gray-500">
             <Users className="w-12 h-12 mx-auto mb-4 opacity-50" />
-            <p>No attendance records found for the selected date and filters.</p>
+            <p>No attendance records found for the selected date range and filters.</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -467,6 +623,9 @@ const DailyAttendance: React.FC = () => {
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Company/Unit
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Date
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Shift
@@ -486,12 +645,6 @@ const DailyAttendance: React.FC = () => {
                   <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                     OT Hours
                   </th>
-                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Permission
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Time
-                  </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
@@ -506,6 +659,8 @@ const DailyAttendance: React.FC = () => {
                   const duration = att.actualStartTime && att.actualEndTime 
                     ? calculateAttendanceDuration(att.actualStartTime, att.actualEndTime)
                     : null;
+                  
+                  const attendanceDate = att.date instanceof Date ? att.date : new Date(att.date);
                   
                   return (
                     <tr key={att.id} className="hover:bg-gray-50">
@@ -534,6 +689,11 @@ const DailyAttendance: React.FC = () => {
                       <td className="px-6 py-4">
                         <div className="text-sm text-gray-900">{company?.name}</div>
                         <div className="text-sm text-gray-500">{unit?.name}</div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="text-sm text-gray-900">
+                          {formatDate(attendanceDate)}
+                        </div>
                       </td>
                       <td className="px-6 py-4">
                         <div className="text-sm text-gray-900">{shift?.name}</div>
@@ -571,9 +731,6 @@ const DailyAttendance: React.FC = () => {
                             {duration.isOtEligible && (
                               <div className="text-xs text-green-600">+{duration.otDuration} OT</div>
                             )}
-                            <div className="text-xs text-gray-500">
-                              (45min lunch deducted)
-                            </div>
                           </div>
                         ) : (
                           <span className="text-xs text-gray-400">No duration</span>
@@ -584,22 +741,6 @@ const DailyAttendance: React.FC = () => {
                           {att.otHours || 0}
                           {duration && duration.isOtEligible && !att.otHours && (
                             <div className="text-xs text-green-600">({duration.otHours}h calc)</div>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-center text-sm text-gray-900">
-                        {att.permissionHours || 0}h
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="text-xs text-gray-600">
-                          {att.actualStartTime && (
-                            <div>In: {formatTime(att.actualStartTime)}</div>
-                          )}
-                          {att.actualEndTime && (
-                            <div>Out: {formatTime(att.actualEndTime)}</div>
-                          )}
-                          {!att.actualStartTime && !att.actualEndTime && (
-                            <span className="text-gray-400">No times recorded</span>
                           )}
                         </div>
                       </td>
