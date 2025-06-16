@@ -193,7 +193,7 @@ const exportToCSV = () => {
   sortedDates.forEach(date => {
     const formattedDate = formatDate(new Date(date));
     headers.push(formattedDate, '', '', '');
-    subHeaders.push('FN Status', 'AN Status', 'Overall Status', 'OT Hours');
+    subHeaders.push('FN Status', 'AN Status',  'OT Hours');
   });
   
   // Sort employees by name
