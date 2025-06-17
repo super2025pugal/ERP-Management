@@ -3,6 +3,7 @@ import { Plus, Edit2, Trash2, Search, Clock, User, Calendar, Calculator } from '
 import { createDocument, updateDocument, deleteDocument, getDocuments, subscribeToCollection } from '../services/firestore';
 import { formatDate, formatTime, calculateAttendanceDuration } from '../utils/calculations';
 import type { Attendance, Employee, Shift } from '../types';
+import EmployeeSearchDropdown from './EmployeeDropdown';
 
 const AttendancePage: React.FC = () => {
   const [attendance, setAttendance] = useState<Attendance[]>([]);
@@ -262,23 +263,14 @@ const AttendancePage: React.FC = () => {
               {/* Employee and Date */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Employee</label>
-                  <select
-                    value={attendanceForm.employeeId}
-                    onChange={(e) => setAttendanceForm({ ...attendanceForm, employeeId: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    required
-                    disabled={!!editingAttendance}
-                  >
-                    <option value="">Select Employee</option>
-                    {employees
-                      .filter(emp => emp.isActive)
-                      .map(employee => (
-                        <option key={employee.id} value={employee.id}>
-                          {employee.name} ({employee.employeeId})
-                        </option>
-                      ))}
-                  </select>
+                  {/* <label className="block text-sm font-medium text-gray-700 mb-2">Employee</label> */}
+<EmployeeSearchDropdown
+  employees={employees}
+  attendanceForm={attendanceForm}
+  setAttendanceForm={setAttendanceForm}
+  editingAttendance={editingAttendance}
+/>
+
                 </div>
                 
                 <div>
