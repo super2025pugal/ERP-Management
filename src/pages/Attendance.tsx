@@ -575,15 +575,18 @@ const AttendancePage: React.FC = () => {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Date
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Shift
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Start Time
                   </th>
                   <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    End Time
+                  </th>
+                  {/* <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                     FN
                   </th>
                   <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                     AN
-                  </th>
+                  </th> */}
                   <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Status
                   </th>
@@ -635,13 +638,21 @@ const AttendancePage: React.FC = () => {
                           </span>
                         </div>
                       </td>
-                      <td className="px-6 py-4">
-                        <div className="text-sm text-gray-900">{shift?.name}</div>
-                        <div className="text-xs text-gray-500">
-                          {shift && `${formatTime(shift.startTime)} - ${formatTime(shift.endTime)}`}
+                      <td className="px-6 py-4 text-center">
+                        <div className="text-sm text-gray-900">
+                          {att.actualStartTime ? formatTime(att.actualStartTime) : (
+                            <span className="text-gray-400">--:--</span>
+                          )}
                         </div>
                       </td>
                       <td className="px-6 py-4 text-center">
+                        <div className="text-sm text-gray-900">
+                          {att.actualEndTime ? formatTime(att.actualEndTime) : (
+                            <span className="text-gray-400">--:--</span>
+                          )}
+                        </div>
+                      </td>
+                      {/* <td className="px-6 py-4 text-center">
                         <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
                           att.fnStatus === 'present' 
                             ? 'bg-green-100 text-green-800' 
@@ -658,7 +669,7 @@ const AttendancePage: React.FC = () => {
                         }`}>
                           {att.anStatus}
                         </span>
-                      </td>
+                      </td> */}
                       <td className="px-6 py-4 text-center">
                         <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusBadgeColor(status)}`}>
                           {status}
