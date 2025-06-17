@@ -214,35 +214,39 @@ const AttendancePage: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="bg-white rounded-lg shadow-sm p-6">
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Attendance Management</h1>
-            <p className="text-gray-600 mt-1">Record and manage employee attendance with automatic duration calculation</p>
-          </div>
-          <button
-            onClick={() => setShowForm(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            <Plus className="w-5 h-5" />
-            Mark Attendance
-          </button>
-        </div>
+  <div className="sticky top-0 z-30 bg-white space-y-4 pb-4">
+  {/* Header */}
+  <div className="bg-gray-200 rounded-lg shadow-sm p-6">
+    <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">Attendance Management</h1>
+        <p className="text-gray-600 mt-1">
+          Record and manage employee attendance with automatic duration calculation
+        </p>
       </div>
+      <button
+        onClick={() => setShowForm(true)}
+        className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+      >
+        <Plus className="w-5 h-5" />
+        Mark Attendance
+      </button>
+    </div>
+        <div className="relative mt-5">
+      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+      <input
+        type="text"
+        value={searchTerm}
+        onChange={(e) => setSearchTerm(e.target.value)}
+        placeholder="Search by employee name or ID..."
+        className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+      />
+    </div>
+  </div>
 
-      {/* Search */}
-      <div className="bg-white rounded-lg shadow-sm p-6">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search by employee name or ID..."
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          />
-        </div>
-      </div>
+  {/* Search */}
+
+</div>
 
       {/* Attendance Form Modal */}
       {showForm && (
