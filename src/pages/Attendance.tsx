@@ -1,19 +1,31 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, Search, Clock, User, Calendar, Calculator, RefreshCw } from 'lucide-react';
+import { Plus, Edit2, Trash2, Search, Clock, User, Calendar, Calculator, RefreshCw, Building, Users, Filter } from 'lucide-react';
 import { createDocument, updateDocument, deleteDocument, getDocuments, subscribeToCollection } from '../services/firestore';
 import { formatDate, formatTime, calculateAttendanceDuration } from '../utils/calculations';
-import type { Attendance, Employee, Shift } from '../types';
+import type { Attendance, Employee, Shift, Company, Unit, Group } from '../types';
 import EmployeeSearchDropdown from './EmployeeDropdown';
 
 const AttendancePage: React.FC = () => {
   const [attendance, setAttendance] = useState<Attendance[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [units, setUnits] = useState<Unit[]>([]);
+  const [groups, setGroups] = useState<Group[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isRecalculating, setIsRecalculating] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingAttendance, setEditingAttendance] = useState<Attendance | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+
+  // Filter states
+  const [filters, setFilters] = useState({
+    companyId: '',
+    unitId: '',
+    groupId: '',
+    startDate: '',
+    endDate: ''
+  });
 
   const [attendanceForm, setAttendanceForm] = useState({
     employeeId: '',
@@ -41,15 +53,21 @@ const AttendancePage: React.FC = () => {
     const unsubscribeAttendance = subscribeToCollection('attendance', setAttendance, 'date');
     const unsubscribeEmployees = subscribeToCollection('employees', setEmployees);
     const unsubscribeShifts = subscribeToCollection('shifts', setShifts);
+    const unsubscribeCompanies = subscribeToCollection('companies', setCompanies);
+    const unsubscribeUnits = subscribeToCollection('units', setUnits);
+    const unsubscribeGroups = subscribeToCollection('groups', setGroups);
 
     return () => {
       unsubscribeAttendance();
       unsubscribeEmployees();
       unsubscribeShifts();
+      unsubscribeCompanies();
+      unsubscribeUnits();
+      unsubscribeGroups();
     };
   }, []);
 
-  // ✅ SIMPLIFIED: Calculate OT directly when times change
+  // Calculate OT directly when times change
   useEffect(() => {
     if (attendanceForm.actualStartTime && attendanceForm.actualEndTime) {
       const duration = calculateAttendanceDuration(
@@ -63,7 +81,7 @@ const AttendancePage: React.FC = () => {
         otHours: duration.otHours
       });
       
-      // ✅ AUTO-UPDATE OT field with calculated value
+      // AUTO-UPDATE OT field with calculated value
       setAttendanceForm(prev => ({ 
         ...prev, 
         otHours: duration.otHours 
@@ -81,15 +99,21 @@ const AttendancePage: React.FC = () => {
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const [attendanceData, employeesData, shiftsData] = await Promise.all([
+      const [attendanceData, employeesData, shiftsData, companiesData, unitsData, groupsData] = await Promise.all([
         getDocuments('attendance', 'date'),
         getDocuments('employees'),
-        getDocuments('shifts')
+        getDocuments('shifts'),
+        getDocuments('companies'),
+        getDocuments('units'),
+        getDocuments('groups')
       ]);
 
       setAttendance(attendanceData);
       setEmployees(employeesData);
       setShifts(shiftsData);
+      setCompanies(companiesData);
+      setUnits(unitsData);
+      setGroups(groupsData);
     } catch (error) {
       console.error('Error loading data:', error);
     } finally {
@@ -97,7 +121,7 @@ const AttendancePage: React.FC = () => {
     }
   };
 
-  // ✅ NEW: Batch OT Recalculation Function
+  // Batch OT Recalculation Function
   const handleBatchOTRecalculation = async () => {
     if (!window.confirm('This will recalculate OT hours for all attendance records with start/end times. Continue?')) {
       return;
@@ -230,12 +254,35 @@ const AttendancePage: React.FC = () => {
     });
   };
 
+  const clearFilters = () => {
+    setFilters({
+      companyId: '',
+      unitId: '',
+      groupId: '',
+      startDate: '',
+      endDate: ''
+    });
+  };
+
+  // Helper functions
   const getEmployeeById = (employeeId: string) => {
     return employees.find(emp => emp.id === employeeId);
   };
 
   const getShiftById = (shiftId: string) => {
     return shifts.find(shift => shift.id === shiftId);
+  };
+
+  const getCompanyById = (companyId: string) => {
+    return companies.find(company => company.id === companyId);
+  };
+
+  const getUnitById = (unitId: string) => {
+    return units.find(unit => unit.id === unitId);
+  };
+
+  const getGroupById = (groupId: string) => {
+    return groups.find(group => group.id === groupId);
   };
 
   const getAttendanceStatus = (fnStatus: string, anStatus: string) => {
@@ -263,12 +310,52 @@ const AttendancePage: React.FC = () => {
     }
   }, [attendanceForm.employeeId, employees]);
 
+  // Get filtered units based on selected company
+  const getFilteredUnits = () => {
+    if (!filters.companyId) return units;
+    return units.filter(unit => unit.companyId === filters.companyId);
+  };
+
+  // Get filtered groups based on selected unit
+  const getFilteredGroups = () => {
+    if (!filters.unitId) return groups;
+    return groups.filter(group => group.unitId === filters.unitId);
+  };
+
+  // Get filtered employees based on all filters
+  const getFilteredEmployees = () => {
+    return employees.filter(emp => {
+      if (filters.companyId && emp.companyId !== filters.companyId) return false;
+      if (filters.unitId && emp.unitId !== filters.unitId) return false;
+      if (filters.groupId && emp.groupId !== filters.groupId) return false;
+      return true;
+    });
+  };
+
+  // Main filtering logic for attendance records
   const filteredAttendance = attendance.filter(att => {
     const employee = getEmployeeById(att.employeeId);
     if (!employee) return false;
+
+    // Text search filter
+    const matchesSearch = employee.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         employee.employeeId.toLowerCase().includes(searchTerm.toLowerCase());
     
-    return employee.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-           employee.employeeId.toLowerCase().includes(searchTerm.toLowerCase());
+    // Company filter
+    const matchesCompany = !filters.companyId || employee.companyId === filters.companyId;
+    
+    // Unit filter
+    const matchesUnit = !filters.unitId || employee.unitId === filters.unitId;
+    
+    // Group filter
+    const matchesGroup = !filters.groupId || employee.groupId === filters.groupId;
+    
+    // Date range filter
+    const attDate = new Date(att.date);
+    const matchesStartDate = !filters.startDate || attDate >= new Date(filters.startDate);
+    const matchesEndDate = !filters.endDate || attDate <= new Date(filters.endDate);
+    
+    return matchesSearch && matchesCompany && matchesUnit && matchesGroup && matchesStartDate && matchesEndDate;
   });
 
   return (
@@ -285,7 +372,7 @@ const AttendancePage: React.FC = () => {
               </p>
             </div>
             <div className="flex flex-col sm:flex-row gap-3">
-              {/* ✅ NEW: Batch OT Recalculation Button */}
+              {/* Batch OT Recalculation Button */}
               <button
                 onClick={handleBatchOTRecalculation}
                 disabled={isRecalculating || attendance.length === 0}
@@ -305,6 +392,8 @@ const AttendancePage: React.FC = () => {
               </button>
             </div>
           </div>
+
+          {/* Search Bar */}
           <div className="relative mt-5">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
             <input
@@ -315,6 +404,163 @@ const AttendancePage: React.FC = () => {
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>
+        </div>
+
+        {/* Filters Section */}
+        <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+          <div className="flex items-center gap-2 mb-4">
+            <Filter className="w-5 h-5 text-gray-600" />
+            <h3 className="text-lg font-semibold text-gray-900">Filters</h3>
+            <div className="ml-auto">
+              <button
+                onClick={clearFilters}
+                className="text-sm text-blue-600 hover:text-blue-800 underline"
+              >
+                Clear All Filters
+              </button>
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+            {/* Company Filter */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                <Building className="w-4 h-4 inline mr-1" />
+                Company
+              </label>
+              <select
+                value={filters.companyId}
+                onChange={(e) => setFilters(prev => ({
+                  ...prev,
+                  companyId: e.target.value,
+                  unitId: '', // Reset unit when company changes
+                  groupId: '' // Reset group when company changes
+                }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+              >
+                <option value="">All Companies</option>
+                {companies.map(company => (
+                  <option key={company.id} value={company.id}>
+                    {company.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Unit Filter */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                <Building className="w-4 h-4 inline mr-1" />
+                Unit
+              </label>
+              <select
+                value={filters.unitId}
+                onChange={(e) => setFilters(prev => ({
+                  ...prev,
+                  unitId: e.target.value,
+                  groupId: '' // Reset group when unit changes
+                }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                disabled={!filters.companyId}
+              >
+                <option value="">All Units</option>
+                {getFilteredUnits().map(unit => (
+                  <option key={unit.id} value={unit.id}>
+                    {unit.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Group Filter */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                <Users className="w-4 h-4 inline mr-1" />
+                Group
+              </label>
+              <select
+                value={filters.groupId}
+                onChange={(e) => setFilters(prev => ({
+                  ...prev,
+                  groupId: e.target.value
+                }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                disabled={!filters.unitId}
+              >
+                <option value="">All Groups</option>
+                {getFilteredGroups().map(group => (
+                  <option key={group.id} value={group.id}>
+                    {group.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Start Date Filter */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                <Calendar className="w-4 h-4 inline mr-1" />
+                Start Date
+              </label>
+              <input
+                type="date"
+                value={filters.startDate}
+                onChange={(e) => setFilters(prev => ({ ...prev, startDate: e.target.value }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+              />
+            </div>
+
+            {/* End Date Filter */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                <Calendar className="w-4 h-4 inline mr-1" />
+                End Date
+              </label>
+              <input
+                type="date"
+                value={filters.endDate}
+                onChange={(e) => setFilters(prev => ({ ...prev, endDate: e.target.value }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+              />
+            </div>
+          </div>
+
+          {/* Filter Summary */}
+          {(filters.companyId || filters.unitId || filters.groupId || filters.startDate || filters.endDate) && (
+            <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <span className="font-medium text-blue-900">Active Filters:</span>
+                {filters.companyId && (
+                  <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full">
+                    Company: {getCompanyById(filters.companyId)?.name}
+                  </span>
+                )}
+                {filters.unitId && (
+                  <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full">
+                    Unit: {getUnitById(filters.unitId)?.name}
+                  </span>
+                )}
+                {filters.groupId && (
+                  <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full">
+                    Group: {getGroupById(filters.groupId)?.name}
+                  </span>
+                )}
+                {filters.startDate && (
+                  <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full">
+                    From: {formatDate(new Date(filters.startDate))}
+                  </span>
+                )}
+                {filters.endDate && (
+                  <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full">
+                    To: {formatDate(new Date(filters.endDate))}
+                  </span>
+                )}
+                <span className="text-blue-700">
+                  ({filteredAttendance.length} records found)
+                </span>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -333,7 +579,7 @@ const AttendancePage: React.FC = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <EmployeeSearchDropdown
-                    employees={employees}
+                    employees={getFilteredEmployees()}
                     attendanceForm={attendanceForm}
                     setAttendanceForm={setAttendanceForm}
                     editingAttendance={editingAttendance}
@@ -359,8 +605,11 @@ const AttendancePage: React.FC = () => {
                   {(() => {
                     const employee = getEmployeeById(attendanceForm.employeeId);
                     const shift = getShiftById(employee?.shiftId || '');
+                    const company = getCompanyById(employee?.companyId || '');
+                    const unit = getUnitById(employee?.unitId || '');
+                    const group = getGroupById(employee?.groupId || '');
                     return (
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
                         <div>
                           <span className="font-medium text-gray-700">Type:</span>
                           <span className={`ml-2 px-2 py-1 text-xs font-semibold rounded-full ${
@@ -372,8 +621,20 @@ const AttendancePage: React.FC = () => {
                           </span>
                         </div>
                         <div>
+                          <span className="font-medium text-gray-700">Company:</span>
+                          <span className="ml-2 text-gray-900">{company?.name || 'N/A'}</span>
+                        </div>
+                        <div>
+                          <span className="font-medium text-gray-700">Unit:</span>
+                          <span className="ml-2 text-gray-900">{unit?.name || 'N/A'}</span>
+                        </div>
+                        <div>
+                          <span className="font-medium text-gray-700">Group:</span>
+                          <span className="ml-2 text-gray-900">{group?.name || 'N/A'}</span>
+                        </div>
+                        <div>
                           <span className="font-medium text-gray-700">Shift:</span>
-                          <span className="ml-2 text-gray-900">{shift?.name}</span>
+                          <span className="ml-2 text-gray-900">{shift?.name || 'N/A'}</span>
                         </div>
                         <div>
                           <span className="font-medium text-gray-700">Timing:</span>
@@ -414,7 +675,7 @@ const AttendancePage: React.FC = () => {
                 </select>
               </div>
 
-              {/* ✅ SIMPLIFIED: Time Tracking Section */}
+              {/* Time Tracking Section */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-4">
                   <Calculator className="w-4 h-4 inline mr-2" />
@@ -441,6 +702,7 @@ const AttendancePage: React.FC = () => {
                     />
                   </div>
                 </div>
+
 
                 {/* ✅ SIMPLIFIED: Duration Display */}
                 {(attendanceForm.actualStartTime && attendanceForm.actualEndTime) && (
