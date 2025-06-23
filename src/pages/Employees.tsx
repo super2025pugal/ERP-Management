@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, Search, Filter, User, Building2, Clock } from 'lucide-react';
+import { Plus, Edit2, Trash2, Search, Filter, User, Building2, Clock, Download } from 'lucide-react';
 import { createDocument, updateDocument, deleteDocument, getDocuments, subscribeToCollection } from '../services/firestore';
 import { formatDate } from '../utils/calculations';
 import type { Employee, Company, Unit, Group, Shift } from '../types';
+import * as XLSX from 'xlsx';
 
 const Employees: React.FC = () => {
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -245,25 +246,79 @@ const Employees: React.FC = () => {
     return matchesSearch && matchesType && matchesCompany;
   });
 
+  // Excel Download Function
+  const downloadExcel = () => {
+    try {
+      // Prepare data for Excel export
+      const excelData = filteredEmployees.map(employee => ({
+        'Name': employee.name,
+        'ID': employee.employeeId,
+        'Company': getCompanyName(employee.companyId),
+        'Unit': getUnitName(employee.unitId),
+        'Group': getGroupName(employee.groupId),
+        'Designation': employee.designation
+      }));
+
+      // Create workbook and worksheet
+      const ws = XLSX.utils.json_to_sheet(excelData);
+      const wb = XLSX.utils.book_new();
+      
+      // Add worksheet to workbook
+      XLSX.utils.book_append_sheet(wb, ws, 'Employees');
+      
+      // Set column widths for better formatting
+      const colWidths = [
+        { wch: 25 }, // Name
+        { wch: 15 }, // ID
+        { wch: 20 }, // Company
+        { wch: 20 }, // Unit
+        { wch: 20 }, // Group
+        { wch: 25 }  // Designation
+      ];
+      ws['!cols'] = colWidths;
+      
+      // Generate filename with current date
+      const currentDate = new Date().toISOString().split('T')[0];
+      const filename = `Employees_${currentDate}.xlsx`;
+      
+      // Download the file
+      XLSX.writeFile(wb, filename);
+      
+      // Show success message
+      alert(`Excel file "${filename}" downloaded successfully!`);
+    } catch (error) {
+      console.error('Error downloading Excel:', error);
+      alert('Error downloading Excel file. Please try again.');
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
-<div className="bg-white rounded-lg shadow-sm p-6 sticky top-0 z-10">
-  <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-    <div>
-      <h1 className="text-2xl font-bold text-gray-900">Employee Management</h1>
-      <p className="text-gray-600 mt-1">Manage employee information and records</p>
-    </div>
-    <button
-      onClick={() => setShowForm(true)}
-      className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-    >
-      <Plus className="w-5 h-5" />
-      Add Employee
-    </button>
-  </div>
-</div>
-
+      <div className="bg-white rounded-lg shadow-sm p-6 sticky top-0 z-10">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Employee Management</h1>
+            <p className="text-gray-600 mt-1">Manage employee information and records</p>
+          </div>
+          <div className="flex gap-3">
+            <button
+              onClick={downloadExcel}
+              className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+            >
+              <Download className="w-5 h-5" />
+              Download Excel
+            </button>
+            <button
+              onClick={() => setShowForm(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              <Plus className="w-5 h-5" />
+              Add Employee
+            </button>
+          </div>
+        </div>
+      </div>
 
       {/* Filters */}
       <div className="bg-white rounded-lg shadow-sm p-6">
