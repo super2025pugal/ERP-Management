@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, Search, Clock, User, Calendar, Calculator } from 'lucide-react';
+import { Plus, Edit2, Trash2, Search, Clock, User, Calendar, Calculator, RefreshCw } from 'lucide-react';
 import { createDocument, updateDocument, deleteDocument, getDocuments, subscribeToCollection } from '../services/firestore';
 import { formatDate, formatTime, calculateAttendanceDuration } from '../utils/calculations';
 import type { Attendance, Employee, Shift } from '../types';
@@ -10,6 +10,7 @@ const AttendancePage: React.FC = () => {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isRecalculating, setIsRecalculating] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingAttendance, setEditingAttendance] = useState<Attendance | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -26,12 +27,11 @@ const AttendancePage: React.FC = () => {
     actualEndTime: ''
   });
 
-  // Real-time duration calculation
+  // Simplified duration calculation state
   const [calculatedDuration, setCalculatedDuration] = useState({
     workingDuration: '0h 0m',
     otDuration: '0h 0m',
-    otHours: 0,
-    isOtEligible: false
+    otHours: 0
   });
 
   useEffect(() => {
@@ -49,31 +49,32 @@ const AttendancePage: React.FC = () => {
     };
   }, []);
 
-  // Calculate duration when start/end times change
+  // ✅ SIMPLIFIED: Calculate OT directly when times change
   useEffect(() => {
     if (attendanceForm.actualStartTime && attendanceForm.actualEndTime) {
       const duration = calculateAttendanceDuration(
         attendanceForm.actualStartTime,
         attendanceForm.actualEndTime
       );
+      
       setCalculatedDuration({
         workingDuration: duration.workingDuration,
         otDuration: duration.otDuration,
-        otHours: duration.otHours,
-        isOtEligible: duration.isOtEligible
+        otHours: duration.otHours
       });
       
-      // Auto-update OT hours if calculated
-      if (duration.isOtEligible && !attendanceForm.otHours) {
-        setAttendanceForm(prev => ({ ...prev, otHours: duration.otHours }));
-      }
+      // ✅ AUTO-UPDATE OT field with calculated value
+      setAttendanceForm(prev => ({ 
+        ...prev, 
+        otHours: duration.otHours 
+      }));
     } else {
       setCalculatedDuration({
         workingDuration: '0h 0m',
         otDuration: '0h 0m',
-        otHours: 0,
-        isOtEligible: false
+        otHours: 0
       });
+      setAttendanceForm(prev => ({ ...prev, otHours: 0 }));
     }
   }, [attendanceForm.actualStartTime, attendanceForm.actualEndTime]);
 
@@ -93,6 +94,65 @@ const AttendancePage: React.FC = () => {
       console.error('Error loading data:', error);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // ✅ NEW: Batch OT Recalculation Function
+  const handleBatchOTRecalculation = async () => {
+    if (!window.confirm('This will recalculate OT hours for all attendance records with start/end times. Continue?')) {
+      return;
+    }
+
+    setIsRecalculating(true);
+    let updatedCount = 0;
+    let errorCount = 0;
+
+    try {
+      // Filter attendance records that have both start and end times
+      const recordsToUpdate = attendance.filter(att => 
+        att.actualStartTime && att.actualEndTime
+      );
+
+      console.log(`Starting batch OT recalculation for ${recordsToUpdate.length} records...`);
+
+      // Process each record
+      for (const att of recordsToUpdate) {
+        try {
+          // Calculate new OT hours
+          const duration = calculateAttendanceDuration(
+            att.actualStartTime!,
+            att.actualEndTime!
+          );
+
+          // Only update if OT hours have changed
+          if (duration.otHours !== (att.otHours || 0)) {
+            await updateDocument('attendance', att.id, {
+              ...att,
+              otHours: duration.otHours,
+              // Add a timestamp to track when this was auto-calculated
+              lastOTCalculation: new Date()
+            });
+            updatedCount++;
+            console.log(`Updated record ${att.id}: OT ${att.otHours || 0}h → ${duration.otHours}h`);
+          }
+        } catch (error) {
+          console.error(`Error updating record ${att.id}:`, error);
+          errorCount++;
+        }
+      }
+
+      // Show success message
+      if (updatedCount > 0) {
+        alert(`✅ Successfully recalculated OT for ${updatedCount} records!${errorCount > 0 ? ` (${errorCount} errors)` : ''}`);
+      } else {
+        alert('ℹ️ No records needed OT recalculation.');
+      }
+
+    } catch (error) {
+      console.error('Batch OT recalculation error:', error);
+      alert('❌ Error during batch recalculation. Check console for details.');
+    } finally {
+      setIsRecalculating(false);
     }
   };
 
@@ -166,8 +226,7 @@ const AttendancePage: React.FC = () => {
     setCalculatedDuration({
       workingDuration: '0h 0m',
       otDuration: '0h 0m',
-      otHours: 0,
-      isOtEligible: false
+      otHours: 0
     });
   };
 
@@ -215,39 +274,49 @@ const AttendancePage: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-  <div className="sticky top-0 z-30 bg-white space-y-4 pb-4">
-  {/* Header */}
-  <div className="bg-gray-200 rounded-lg shadow-sm p-6">
-    <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Attendance Management</h1>
-        <p className="text-gray-600 mt-1">
-          Record and manage employee attendance with automatic duration calculation
-        </p>
+      <div className="sticky top-0 z-30 bg-white space-y-4 pb-4">
+        {/* Header */}
+        <div className="bg-gray-200 rounded-lg shadow-sm p-6">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">Attendance Management</h1>
+              <p className="text-gray-600 mt-1">
+                Record and manage employee attendance with automatic OT calculation
+              </p>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-3">
+              {/* ✅ NEW: Batch OT Recalculation Button */}
+              <button
+                onClick={handleBatchOTRecalculation}
+                disabled={isRecalculating || attendance.length === 0}
+                className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Recalculate OT hours for all attendance records"
+              >
+                <RefreshCw className={`w-5 h-5 ${isRecalculating ? 'animate-spin' : ''}`} />
+                {isRecalculating ? 'Recalculating...' : 'Recalc OT'}
+              </button>
+              
+              <button
+                onClick={() => setShowForm(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                <Plus className="w-5 h-5" />
+                Mark Attendance
+              </button>
+            </div>
+          </div>
+          <div className="relative mt-5">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search by employee name or ID..."
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+          </div>
+        </div>
       </div>
-      <button
-        onClick={() => setShowForm(true)}
-        className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-      >
-        <Plus className="w-5 h-5" />
-        Mark Attendance
-      </button>
-    </div>
-        <div className="relative mt-5">
-      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-      <input
-        type="text"
-        value={searchTerm}
-        onChange={(e) => setSearchTerm(e.target.value)}
-        placeholder="Search by employee name or ID..."
-        className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-      />
-    </div>
-  </div>
-
-  {/* Search */}
-
-</div>
 
       {/* Attendance Form Modal */}
       {showForm && (
@@ -263,14 +332,12 @@ const AttendancePage: React.FC = () => {
               {/* Employee and Date */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  {/* <label className="block text-sm font-medium text-gray-700 mb-2">Employee</label> */}
-<EmployeeSearchDropdown
-  employees={employees}
-  attendanceForm={attendanceForm}
-  setAttendanceForm={setAttendanceForm}
-  editingAttendance={editingAttendance}
-/>
-
+                  <EmployeeSearchDropdown
+                    employees={employees}
+                    attendanceForm={attendanceForm}
+                    setAttendanceForm={setAttendanceForm}
+                    editingAttendance={editingAttendance}
+                  />
                 </div>
                 
                 <div>
@@ -347,15 +414,15 @@ const AttendancePage: React.FC = () => {
                 </select>
               </div>
 
-              {/* Actual Times for Duration Calculation */}
+              {/* ✅ SIMPLIFIED: Time Tracking Section */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-4">
                   <Calculator className="w-4 h-4 inline mr-2" />
-                  Time Tracking & Duration Calculation
+                  Time Tracking & OT Calculation
                 </label>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-600 mb-2">Actual Start Time</label>
+                    <label className="block text-sm font-medium text-gray-600 mb-2">Start Time</label>
                     <input
                       type="time"
                       value={attendanceForm.actualStartTime}
@@ -365,7 +432,7 @@ const AttendancePage: React.FC = () => {
                   </div>
                   
                   <div>
-                    <label className="block text-sm font-medium text-gray-600 mb-2">Actual End Time</label>
+                    <label className="block text-sm font-medium text-gray-600 mb-2">End Time</label>
                     <input
                       type="time"
                       value={attendanceForm.actualEndTime}
@@ -375,33 +442,24 @@ const AttendancePage: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Duration Display */}
+                {/* ✅ SIMPLIFIED: Duration Display */}
                 {(attendanceForm.actualStartTime && attendanceForm.actualEndTime) && (
-                  <div className="mt-4 p-4 bg-blue-50 rounded-lg">
-                    <h4 className="text-sm font-semibold text-blue-900 mb-2">Calculated Duration:</h4>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                  <div className="mt-4 p-4 bg-green-50 rounded-lg border border-green-200">
+                    <h4 className="text-sm font-semibold text-green-900 mb-2">📊 Calculated Duration:</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                       <div>
-                        <span className="font-medium text-blue-700">Working Hours:</span>
-                        <span className="ml-2 text-blue-900">{calculatedDuration.workingDuration}</span>
-                        <div className="text-xs text-blue-600">(After 45min lunch deduction)</div>
+                        <span className="font-medium text-green-700">Working Time:</span>
+                        <span className="ml-2 text-green-900 font-semibold">{calculatedDuration.workingDuration}</span>
+                        <div className="text-xs text-green-600">(After 45min lunch break)</div>
                       </div>
                       <div>
-                        <span className="font-medium text-blue-700">Overtime:</span>
-                        <span className={`ml-2 ${calculatedDuration.isOtEligible ? 'text-green-700 font-semibold' : 'text-gray-500'}`}>
-                          {calculatedDuration.otDuration}
-                        </span>
-                        <div className="text-xs text-blue-600">
-                          {calculatedDuration.isOtEligible ? '(Eligible for OT)' : '(No OT - need ≥9h working time)'}
-                        </div>
-                      </div>
-                      <div>
-                        <span className="font-medium text-blue-700">Standard:</span>
-                        <span className="ml-2 text-blue-900">8h 45m</span>
-                        <div className="text-xs text-blue-600">(Regular working hours)</div>
+                        <span className="font-medium text-green-700">Overtime:</span>
+                        <span className="ml-2 text-green-900 font-semibold">{calculatedDuration.otDuration}</span>
+                        <div className="text-xs text-green-600">(Anything over 8 hours)</div>
                       </div>
                     </div>
-                    <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-800">
-                      <strong>OT Rule:</strong> OT only applies if working time ≥ 9 hours. OT = Working Time - 8h 45m
+                    <div className="mt-3 p-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-800">
+                      <strong>Simple Rule:</strong> Total Time - 45min lunch = Working Time. Working Time - 8 hours = OT
                     </div>
                   </div>
                 )}
@@ -469,29 +527,20 @@ const AttendancePage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Additional Details */}
+              {/* ✅ SIMPLIFIED: OT Hours & Permission */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     OT Hours
-                    {calculatedDuration.isOtEligible && (
-                      <span className="text-xs text-green-600 ml-1">
-                        (Auto: {calculatedDuration.otHours}h)
-                      </span>
-                    )}
                   </label>
                   <input
-                    type="number"
-                    step="0.25"
-                    min="0"
-                    max="12"
-                    value={attendanceForm.otHours}
-                    onChange={(e) => setAttendanceForm({ ...attendanceForm, otHours: Number(e.target.value) })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder={calculatedDuration.otHours}
+                    type="text"
+                    value={`Overtime: ${calculatedDuration.otDuration}`}
+                    readOnly
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-green-50"
                   />
                   <p className="text-xs text-gray-500 mt-1">
-                    Manual entry overrides calculated OT. Leave empty to use calculated value.
+                    (Anything over 8 hours)
                   </p>
                 </div>
                 
@@ -577,12 +626,6 @@ const AttendancePage: React.FC = () => {
                   <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                     End Time
                   </th>
-                  {/* <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    FN
-                  </th>
-                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    AN
-                  </th> */}
                   <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Status
                   </th>
@@ -610,6 +653,7 @@ const AttendancePage: React.FC = () => {
                   const duration = att.actualStartTime && att.actualEndTime 
                     ? calculateAttendanceDuration(att.actualStartTime, att.actualEndTime)
                     : null;
+                  
                   
                   return (
                     <tr key={att.id} className="hover:bg-gray-50">

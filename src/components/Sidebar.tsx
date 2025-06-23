@@ -31,7 +31,8 @@ const Sidebar: React.FC<SidebarProps> = ({ onLogout }) => {
     { path: '/monthly-attendance', icon: CalendarDays, label: 'Monthly Attendance' },
     { path: '/shift-assignment', icon: UserCheck, label: 'Shift Assignment' },
     { path: '/allowance', icon: DollarSign, label: 'Allowance' },
-    { path: '/reports', icon: BarChart3, label: 'Reports' }
+    { path: '/reports', icon: BarChart3, label: 'Reports' },
+    { path: '/export', icon: BarChart3, label: 'Export' },
   ];
 
   const handleLogout = () => {

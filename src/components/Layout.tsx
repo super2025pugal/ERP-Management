@@ -11,7 +11,7 @@ import MonthlyAttendance from '../pages/MonthlyAttendance';
 import ShiftAssignment from '../pages/ShiftAssignment';
 import Allowance from '../pages/Allowance';
 import Reports from '../pages/Reports';
-
+import Export from '../pages/FirebaseDataExporter'
 const Layout: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -65,6 +65,7 @@ const Layout: React.FC = () => {
             <Route path="/shift-assignment" element={<ShiftAssignment />} />
             <Route path="/allowance" element={<Allowance />} />
             <Route path="/reports" element={<Reports />} />
+            <Route path="/export" element={<Export />} />
           </Routes>
         </main>
       </div>
