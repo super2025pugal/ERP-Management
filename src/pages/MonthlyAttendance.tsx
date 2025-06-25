@@ -168,15 +168,15 @@ const MonthlyAttendance: React.FC = () => {
       'Unit',
       'Group',
       'Total Days',
-      'Present Days (Count)',
-      'Absent Days (Count)',
-      'FN Present',
-      'AN Present',
+      // 'Present Days (Count)',
+      // 'Absent Days (Count)',
+      // 'FN Present',
+      // 'AN Present',
       'Total Attendance Value',
       'Total OT Hours',
-      'Total Permission Hours',
-      'Attendance Rate (%)',
-      'Average Attendance Value'
+      // 'Total Permission Hours',
+      // 'Attendance Rate (%)',
+      // 'Average Attendance Value'
     ];
 
     const csvData = filteredEmployeeData.map(({ employee, attendance: empAttendance }) => {
@@ -197,7 +197,10 @@ const MonthlyAttendance: React.FC = () => {
         sum + getAttendanceValue(att.fnStatus, att.anStatus), 0
       );
       
-      const totalOtHours = empAttendance.reduce((sum, att) => sum + (att.otHours || 0), 0);
+     const totalOtHours = parseFloat(
+  empAttendance.reduce((sum, att) => sum + (att.otHours || 0), 0).toFixed(2)
+);
+
       const totalPermissionHours = empAttendance.reduce((sum, att) => sum + (att.permissionHours || 0), 0);
       const attendanceRate = totalDays > 0 ? ((presentDays / totalDays) * 100).toFixed(1) : '0';
       const averageAttendanceValue = totalDays > 0 ? (totalAttendanceValue / totalDays).toFixed(2) : '0';
@@ -210,15 +213,15 @@ const MonthlyAttendance: React.FC = () => {
         unit?.name || '',
         group?.name || '',
         totalDays,
-        presentDays,
-        absentDays,
-        fnPresent,
-        anPresent,
+        // presentDays,
+        // absentDays,
+        // fnPresent,
+        // anPresent,
         totalAttendanceValue.toFixed(1),
         totalOtHours,
-        totalPermissionHours,
-        attendanceRate,
-        averageAttendanceValue
+        // totalPermissionHours,
+        // attendanceRate,
+        // averageAttendanceValue
       ];
     });
 
