@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Calendar, Search, Filter, Users, Clock, Download, RefreshCw, Calculator, ChevronLeft, ChevronRight } from 'lucide-react';
-import { getAttendanceByMonth, getDocuments } from '../services/firestore';
+import { getAttendanceByMonth, getAttendanceByDateRange, getDocuments } from '../services/firestore';
 import { formatDate, formatTime, calculateAttendanceDuration, getWorkingDaysInMonth } from '../utils/calculations';
 import type { Attendance, Employee, Shift, Company, Unit, Group, Holiday } from '../types';
 
@@ -64,8 +64,23 @@ const MonthlyAttendance: React.FC = () => {
     setIsLoading(true);
     try {
       const [year, month] = selectedMonth.split('-').map(Number);
-      const attendanceData = await getAttendanceByMonth(year, month - 1);
-      setAttendance(attendanceData);
+      
+      // Create precise date range for the selected month
+      const startDate = new Date(year, month - 1, 1);
+      const endDate = new Date(year, month, 0);
+      startDate.setHours(0, 0, 0, 0);
+      endDate.setHours(23, 59, 59, 999);
+      
+      // Use date range query instead of month-based query
+      const attendanceData = await getAttendanceByDateRange(startDate, endDate);
+      
+      // Additional filtering to ensure exact month match
+      const filteredAttendance = attendanceData.filter(att => {
+        const attDate = new Date(att.date);
+        return attDate.getFullYear() === year && attDate.getMonth() === month - 1;
+      });
+      
+      setAttendance(filteredAttendance);
     } catch (error) {
       console.error('Error loading attendance:', error);
     } finally {

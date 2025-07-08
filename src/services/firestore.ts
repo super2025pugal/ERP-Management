@@ -113,6 +113,29 @@ export const getDocumentsWhere = async (
   }));
 };
 
+// Special function for queries that don't need ordering to avoid composite index issues
+export const getDocumentsWhereNoOrder = async (
+  collectionName: string,
+  field: string,
+  operator: any,
+  value: any
+) => {
+  const q = query(
+    collection(db, collectionName),
+    where(field, operator, value)
+  );
+  const querySnapshot = await getDocs(q);
+  return querySnapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data(),
+    createdAt: convertFirestoreTimestampToDate(doc.data().createdAt),
+    date: convertFirestoreTimestampToDate(doc.data().date),
+    dob: convertFirestoreTimestampToDate(doc.data().dob),
+    dateOfJoining: convertFirestoreTimestampToDate(doc.data().dateOfJoining),
+    weekStartDate: convertFirestoreTimestampToDate(doc.data().weekStartDate),
+    weekEndDate: convertFirestoreTimestampToDate(doc.data().weekEndDate)
+  }));
+};
 // Real-time listeners
 export const subscribeToCollection = (
   collectionName: string,
@@ -158,11 +181,12 @@ export const getAttendanceByDate = async (date: Date) => {
 };
 
 export const getAttendanceByDateRange = async (startDate: Date, endDate: Date) => {
+  // Ensure we're using the date field, not createdAt
   const q = query(
     collection(db, 'attendance'),
     where('date', '>=', Timestamp.fromDate(startDate)),
     where('date', '<=', Timestamp.fromDate(endDate)),
-    orderBy('date', 'desc')
+    orderBy('date', 'desc') // Order by actual date, not creation date
   );
   
   const querySnapshot = await getDocs(q);
@@ -175,11 +199,12 @@ export const getAttendanceByDateRange = async (startDate: Date, endDate: Date) =
 };
 
 export const getAllowancesByDateRange = async (startDate: Date, endDate: Date) => {
+  // Ensure we're using the date field, not createdAt
   const q = query(
     collection(db, 'allowances'),
     where('date', '>=', Timestamp.fromDate(startDate)),
     where('date', '<=', Timestamp.fromDate(endDate)),
-    orderBy('date', 'desc')
+    orderBy('date', 'desc') // Order by actual date, not creation date
   );
   
   const querySnapshot = await getDocs(q);
@@ -193,14 +218,18 @@ export const getAllowancesByDateRange = async (startDate: Date, endDate: Date) =
 
 // Monthly attendance helper
 export const getAttendanceByMonth = async (year: number, month: number) => {
+  // Create precise date boundaries for the month
   const startDate = new Date(year, month, 1);
   const endDate = new Date(year, month + 1, 0);
+  startDate.setHours(0, 0, 0, 0);
+  endDate.setHours(23, 59, 59, 999);
   
+  // Use the date field for filtering, not createdAt
   const q = query(
     collection(db, 'attendance'),
     where('date', '>=', Timestamp.fromDate(startDate)),
     where('date', '<=', Timestamp.fromDate(endDate)),
-    orderBy('date', 'desc')
+    orderBy('date', 'desc') // Order by actual attendance date
   );
   
   const querySnapshot = await getDocs(q);

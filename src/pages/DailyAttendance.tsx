@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Calendar, Search, Filter, Users, Clock, Download, RefreshCw, Calculator, X } from 'lucide-react';
-import { getAttendanceByDate, getDocuments } from '../services/firestore';
+import { getAttendanceByDate, getAttendanceByDateRange, getDocuments } from '../services/firestore';
 import { formatDate, formatTime, calculateAttendanceDuration } from '../utils/calculations';
 import type { Attendance, Employee, Shift, Company, Unit, Group } from '../types';
 
@@ -71,17 +71,27 @@ const DailyAttendance: React.FC = () => {
   const loadAttendanceRange = async () => {
     setIsLoading(true);
     try {
-      const attendanceData = [];
       const fromDate = new Date(selectedFromDate);
       const toDate = new Date(selectedToDate);
       
-      // Load attendance for each day in the range
-      for (let d = new Date(fromDate); d <= toDate; d.setDate(d.getDate() + 1)) {
-        const dailyAttendance = await getAttendanceByDate(new Date(d));
-        attendanceData.push(...dailyAttendance);
-      }
+      // Set time boundaries for precise filtering
+      fromDate.setHours(0, 0, 0, 0);
+      toDate.setHours(23, 59, 59, 999);
       
-      setAttendance(attendanceData);
+      // Use date range query for better performance
+      const attendanceData = await getAttendanceByDateRange(fromDate, toDate);
+      
+      // Additional filtering to ensure dates are within the exact range
+      const filteredAttendance = attendanceData.filter(att => {
+        const attDate = new Date(att.date);
+        const attDateOnly = new Date(attDate.getFullYear(), attDate.getMonth(), attDate.getDate());
+        const fromDateOnly = new Date(fromDate.getFullYear(), fromDate.getMonth(), fromDate.getDate());
+        const toDateOnly = new Date(toDate.getFullYear(), toDate.getMonth(), toDate.getDate());
+        
+        return attDateOnly >= fromDateOnly && attDateOnly <= toDateOnly;
+      });
+      
+      setAttendance(filteredAttendance);
     } catch (error) {
       console.error('Error loading attendance:', error);
     } finally {
