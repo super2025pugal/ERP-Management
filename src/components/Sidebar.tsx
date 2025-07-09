@@ -13,7 +13,8 @@ import {
   LogOut,
   UserCheck,
   CalendarDays,
-  FileText
+  FileText,
+  Database
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -34,6 +35,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onLogout }) => {
     { path: '/allowance', icon: DollarSign, label: 'Allowance' },
     { path: '/reports', icon: BarChart3, label: 'Reports' },
     { path: '/import-export', icon: FileText, label: 'Import/Export' },
+    { path: '/backup-restore', icon: Database, label: 'Backup & Restore' },
   ];
 
   const handleLogout = () => {
