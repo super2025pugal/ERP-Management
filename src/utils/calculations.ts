@@ -224,7 +224,16 @@ export const calculateSalary = (
 
   // Calculate OT amount using per hour salary
   const hourlyRate = perDaySalary / 8;
-  const otAmount = totalOtHours * hourlyRate * 1.5;
+  
+  // Different OT calculation for staff vs labour
+  let otAmount = 0;
+  if (employee.employeeType === 'staff') {
+    // Staff: OT Hours × Hourly Rate × 1.5 (overtime premium)
+    otAmount = totalOtHours * hourlyRate * 1.5;
+  } else {
+    // Labour: OT Hours × Hourly Rate (no premium, just regular hourly rate)
+    otAmount = totalOtHours * hourlyRate;
+  }
 
   // Calculate allowances
   const totalAllowances = monthAllowances.reduce((sum, all) => sum + all.amount, 0);
