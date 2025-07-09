@@ -23,7 +23,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onLogin }) => {
     await new Promise(resolve => setTimeout(resolve, 1000));
 
     // Hardcoded credentials
-    if (credentials.username === 'admin' && credentials.password === 'admin@123') {
+    if (credentials.username === 'admin' && credentials.password === 'admin@2025') {
       onLogin(true);
     } else {
       setError('Invalid username or password');
